@@ -5,14 +5,15 @@
 #
 # TODO
 #
+# - raise exception on inputs that are too long
+#
 # - make a SudokuCollection class that reads in collections of sudokus stored in a file
 # and solve them all at once
-# - raise exception on inputs that are too long
-# - add --verbose switch
 # - generate sudokus
 # - generate extremely hard sudokus (measure the time it takes for this
 # program to solve it or the amount of backtracking needed)
-# - upload to github
+# - add --verbose switch
+#
 # - decent output :) (gui?)
 # - memoize everything (refractor to be able to memoize functions that
 # have mutable parameters)
