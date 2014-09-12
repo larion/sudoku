@@ -80,7 +80,9 @@ class Sudoku:
     
     def is_cell_in_region(self, cell, region):
         """ checks whether a cell instance is in a region """
-        return id(cell) in (id(cell) for cell in region)
+        for cell2 in region:
+            if cell2 is cell: return True
+        return False
 
     def subregion(self, no, region):
         """ returns those cells of region, where no is a candidate """
