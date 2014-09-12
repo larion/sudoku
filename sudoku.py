@@ -193,13 +193,14 @@ class Sudoku:
             for n in numbers:
                 subregion = self.subregion(n, region)
                 for region2 in self.regions:
-                    if filter(lambda x: self.is_cell_in_region(x, region2), subregion) == subregion:
-                        # i. e. if region2 contains subregion
-                        target = (cell for cell in region2 if not self.is_cell_in_region(cell, subregion))
-                        for cell in target:
-                            try:
-                                cell.remove(n)
-                            except ValueError: pass
+                    # test if region2 contains subregion
+                    for cell in subregion:
+                        if not self.is_cell_in_region(cell, region2): return
+                    target = (cell for cell in region2 if not self.is_cell_in_region(cell, subregion))
+                    for cell in target:
+                        try:
+                            cell.remove(n)
+                        except ValueError: pass
                                     
     def char_to_cand_list(self, char):
         """ convert a character to a list of candidates according
