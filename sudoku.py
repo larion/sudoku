@@ -223,7 +223,7 @@ class Sudoku(object):
         If so, insert it. This only makes sense in conjunction with
         solve 1"""
         for region in self.regions:
-            for no in range(1,10):
+            for no in xrange(1,10):
                 possible = self.subregion(no, region)
                 if len(possible) == 1: #found a number
                     target = possible[0]
@@ -267,7 +267,7 @@ class Sudoku(object):
     def read_file(self, infile): 
         """ reads in input file to self.table"""
         self.table = []
-        for _ in range(9):
+        for _ in xrange(9):
             self.table.append( map(self.char_to_cand_list, list(infile.read(9))) )
         self.check_table()
 
@@ -279,7 +279,7 @@ class Sudoku(object):
     def read_str(self, instr):
         """ reads in a string representation of a sudoku puzzle to self.table """
         self.table = []
-        for i in range(9):
+        for i in xrange(9):
                 self.table.append( map(self.char_to_cand_list, instr[i*9:i*9+9]) ) 
         self.check_table()
 
