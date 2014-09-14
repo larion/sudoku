@@ -39,7 +39,7 @@ class SudokuError(Exception):
 class SudokuInputError(SudokuError):
     pass
 
-class SudokuCollection:
+class SudokuCollection(object):
     """ Class that can store a collection of sudoku puzzles."""
     def __init__(self, sudokufile):
         self.sudokus=[]
@@ -76,7 +76,7 @@ class SudokuCollection:
     def __len__(self):
         return len(self.sudokus)
 
-class Sudoku:
+class Sudoku(object):
     """ Class that represents Sudoku puzzles. The only public method is sudoku.solve(). 
     This combines simple elimination techniques (see Sudoku.solve1, Sudoku.solve2 andSudoku.solve3)
     with backtracking (which is only used when simple methods fail)."""
