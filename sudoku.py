@@ -5,14 +5,17 @@
 #
 # TODO
 #
+# urgent: performance leak -> when backtracking every new Sudoku instance
+# initializes regions which takes a lot of time (refactor self.table
+# to be a dict? This would also help with memoization!)
+#
 # - raise exception on inputs that are too long
 #
-# - make a SudokuCollection class that reads in collections of sudokus stored in a file
-# and solve them all at once
+# - implement __getitem__() on Sudoku?
 # - generate sudokus
 # - generate extremely hard sudokus (measure the time it takes for this
 # program to solve it or the amount of backtracking needed)
-# - add --verbose switch
+# - add --verbose switch to Sudoku
 #
 # - decent output :) (gui?)
 # - memoize everything (refractor to be able to memoize functions that
@@ -28,11 +31,50 @@ import itertools
 import copy
 import sys
 
+from decorators import *
+
 class SudokuError(Exception):
     pass
 
 class SudokuInputError(SudokuError):
     pass
+
+class SudokuCollection:
+    """ Class that can store a collection of sudoku puzzles."""
+    def __init__(self, sudokufile):
+        self.sudokus=[]
+        for line in sudokufile:
+            # description of a single sudoku puzzle
+            description = line.strip() 
+            if len(description) == 81:
+                self.sudokus.append(Sudoku(instr=description))
+
+    def solve_all(self, outfile=None, verbose=True):
+        """ solves all sudokus in the collection, and (optionally) writes out 
+        the solutions to the file specified """
+        v = verbose
+        total = len(self) #total number of sudokus in the collection
+        if v: print "Solving {!s} sudokus.".format(total)
+        for i, sudoku in enumerate(self):
+            if v: print sudoku
+            sudoku.solve()
+            if v: print sudoku
+            if v: print "{!s} out of {!s} sudokus solved.".format(i+1, total)
+        if outfile:
+            if v: print "Writing output to file."
+            for sudoku in self:
+                for row in sudoku.table:
+                    for cell in row:
+                        outfile.write(str(cell[0]))
+                outfile.write("\n")
+            if v: print "Done."
+        return "Success"
+
+    def __getitem__(self, no):
+        return self.sudokus[no]
+    
+    def __len__(self):
+        return len(self.sudokus)
 
 class Sudoku:
     """ Class that represents Sudoku puzzles. The only public method is sudoku.solve(). 
@@ -63,6 +105,7 @@ class Sudoku:
         except ValueError:
             raise SudokuInputError
         self.set_regions()
+        self.initialize_peers()
 
     def set_regions(self): 
         """ Initializes regions. """
@@ -80,9 +123,7 @@ class Sudoku:
     
     def is_cell_in_region(self, cell, region):
         """ checks whether a cell instance is in a region """
-        for cell2 in region:
-            if cell2 is cell: return True
-        return False
+        return any(cell is cell2 for cell2 in region)
 
     def subregion(self, no, region):
         """ returns those cells of region, where no is a candidate """
@@ -144,6 +185,21 @@ class Sudoku:
         else:
             return False
 
+    def initialize_peers(self):
+        """ Initialize a list of peers for each cell in self.peers, so that we
+        don't have to generate this list every time. """
+        self.peersdict={}
+        for col in self.table:
+            for cell in col:
+                self.peersdict[id(cell)] = [cell2 
+                for region in self.regions 
+                if self.is_cell_in_region(cell, region)
+                for cell2 in region
+                if cell2 is not cell]
+
+    def peers(self, cell):
+        return self.peersdict[id(cell)]
+
     def solve1(self): 
         """ For all regions check if there is only one cell left in
         it. If so, fill in the last cell accordingly. Do this until
@@ -156,11 +212,7 @@ class Sudoku:
                     # value would result in a collision and try
                     # to delete value from the list of possible
                     # candidates:
-                    for cell2 in [cell2 
-                        for region in self.regions 
-                        if self.is_cell_in_region(cell, region)
-                        for cell2 in region
-                        if cell2 is not cell]:
+                    for cell2 in self.peers(cell):
                             try:
                                 cell2.remove(value)
                             except ValueError: pass
@@ -265,7 +317,6 @@ class Sudoku:
             out = out+"\n"
         return out
         
-
     def __repr__(self):
         """ The output of this function is the format that the class
         can read in as well (serialization) - a list of possibilities

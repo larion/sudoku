@@ -1,6 +1,7 @@
 #! /usr/bin/python
 
-from sudoku import Sudoku, SudokuError, SudokuInputError
+from sudoku import Sudoku, SudokuCollection, SudokuError, SudokuInputError
+import time
 
 def test_sudoku_class(): #rebuild this function
     """ performs tests on the Sudoku class """
@@ -177,6 +178,21 @@ def test_sudoku_class(): #rebuild this function
     assert sorted(sudoku.subregion(9, [sudoku.table[6][x] for x in range(9)])) == []
     assert sudoku.subregion(1, [sudoku.table[x][y] for x in range(9) for y in range(9)]) == [sudoku.table[5][4], sudoku.table[6][8]]
     assert sudoku.subregion(2, [sudoku.table[x][y] for x in range(9) for y in range(9)]) == [sudoku.table[1][0], sudoku.table[4][3], sudoku.table[5][7]]
+
+    print "OK. Let's see how fast we can solve some puzzle collections."
+    benchmarklist = [ ("50 puzzles from Project Euler", "puzzles/euler_puzzles_50.txt", "puzzles/euler_solutions_50.txt"),
+            ("95 hard puzzles", "puzzles/hard_puzzles_95.txt", "puzzles/hard_solutions_95.txt") ]
+    for collection_name, path_puzzle, path_solution in benchmarklist:
+        print collection_name
+        with open(path_puzzle) as puzzles, open("puzzles/euler_solutions_50.txt","w") as solutions:
+            before = time.clock()
+            collection = SudokuCollection(puzzles)
+            collection.solve_all(solutions, verbose=True)
+            puzzleno = len(collection.sudokus) #number of sudokus, TODO: implement API
+            after = time.clock()
+            elapsed = after-before
+            average = elapsed/50.0
+            print "Solving {!s} puzzles took {!s} secs, avg: {!s} sec".format(puzzleno, elapsed, average) #TODO check results
     print "Tests succesful!"
     return True
 
