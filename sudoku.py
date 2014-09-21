@@ -107,49 +107,7 @@ class Sudoku(object):
         self.set_regions()
         self.initialize_peers()
 
-    def set_regions(self): 
-        """ Initializes regions. """
-        prod = itertools.product
-        projections = [range(3), range(3, 6), range(6,9)]
-        subsquares = [ [self.table[col][cell] for col, cell in prod(x,y)]
-            for x, y in prod(projections, projections)]
-        rows  = [[ self.table[x][y] for y in range(9)] for x in range(9)]
-        cols  = [[ self.table[y][x] for y in range(9)] for x in range(9)]
-        self.regions = subsquares + rows + cols
-
-    def is_no_in_region(self, no, region):
-        """ Checks whether a number is in a given region (box, row or column) """
-        return no in (x[0] for x in region if len(x)==1)
-    
-    def is_cell_in_region(self, cell, region):
-        """ checks whether a cell instance is in a region """
-        return any(cell is cell2 for cell2 in region)
-
-    def subregion(self, no, region):
-        """ returns those cells of region, where no is a candidate """
-        return [cell for cell in region if no in cell]
-
-    def repeat_until_stuck(self, function): 
-        """ Iterates a solving function until it gets stuck (i. e. self.table
-        doesn't get changed anymore) or the puzzle is solved. If called with a
-        list of function it iterates through all of them until stuck. """
-        if not isinstance(function, list):
-            tasks = [function]
-        else:
-            tasks = function
-        table=[]
-        while table != self.table:
-            table = copy.deepcopy(self.table)
-            for func in tasks:
-                func()
-                if self.is_solved():
-                    return True
-        return False
-
-    def is_solved(self):
-        """ return True if the puzzle is solved,
-        False otherwise """
-        return set([len(cell) for col in self.table for cell in col]) == set([1])
+    # high-level solving functions
 
     def solve(self):
         """ The main function of this class. Tries to solve the
@@ -184,21 +142,6 @@ class Sudoku(object):
             del mincell[:]
         else:
             return False
-
-    def initialize_peers(self):
-        """ Initialize a list of peers for each cell in self.peers, so that we
-        don't have to generate this list every time. """
-        self.peersdict={}
-        for col in self.table:
-            for cell in col:
-                self.peersdict[id(cell)] = [cell2 
-                for region in self.regions 
-                if self.is_cell_in_region(cell, region)
-                for cell2 in region
-                if cell2 is not cell]
-
-    def peers(self, cell):
-        return self.peersdict[id(cell)]
 
     def solve1(self): 
         """ For all regions check if there is only one cell left in
@@ -253,7 +196,76 @@ class Sudoku(object):
                         try:
                             cell.remove(n)
                         except ValueError: pass
+
+    #middle level helper methods
+
+    def initialize_peers(self):
+        """ Initialize a list of peers for each cell in self.peers, so that we
+        don't have to generate this list every time. """
+        self.peersdict={}
+        for col in self.table:
+            for cell in col:
+                self.peersdict[id(cell)] = [cell2 
+                for region in self.regions 
+                if self.is_cell_in_region(cell, region)
+                for cell2 in region
+                if cell2 is not cell]
+
+    def peers(self, cell):
+        return self.peersdict[id(cell)]
+
+    def set_regions(self): #TODO refactor
+        """ Initializes regions. """
+        prod = itertools.product
+        projections = [range(3), range(3, 6), range(6,9)]
+        subsquares = [ [self.table[col][cell] for col, cell in prod(x,y)]
+            for x, y in prod(projections, projections)]
+        rows  = [[ self.table[x][y] for y in range(9)] for x in range(9)]
+        cols  = [[ self.table[y][x] for y in range(9)] for x in range(9)]
+        self.regions = subsquares + rows + cols
+
+    def is_no_in_region(self, no, region):
+        """ Checks whether a number is in a given region (box, row or column) """
+        return no in (x[0] for x in region if len(x)==1)
+    
+    def is_cell_in_region(self, cell, region):
+        """ checks whether a cell instance is in a region """
+        return any(cell is cell2 for cell2 in region)
+
+    def subregion(self, no, region):
+        """ returns those cells of region, where no is a candidate """
+        return [cell for cell in region if no in cell]
+
+    def repeat_until_stuck(self, function): 
+        """ Iterates a solving function until it gets stuck (i. e. self.table
+        doesn't get changed anymore) or the puzzle is solved. If called with a
+        list of function it iterates through all of them until stuck. """
+        if not isinstance(function, list):
+            tasks = [function]
+        else:
+            tasks = function
+        table=[]
+        while table != self.table:
+            table = copy.deepcopy(self.table)
+            for func in tasks:
+                func()
+                if self.is_solved():
+                    return True
+        return False
+
+    def is_solved(self):
+        """ return True if the puzzle is solved,
+        False otherwise """
+        return set([len(cell) for col in self.table for cell in col]) == set([1])
                                     
+    def is_consistent(self):
+        """ Detects collisions. Technically this function just returns False
+        if there is a cell in self.table which is empty (no 
+        candidates left) """
+        return bool(min([len(cell) for col in self.table for cell in col]))
+
+    # low level internal processing methods
+
     def char_to_cand_list(self, char):
         """ convert a character to a list of candidates according
         to the following pattern:
@@ -298,11 +310,6 @@ class Sudoku(object):
         elif not set([num for col in self.table for cell in col for num in cell]).issubset(numbers):
             raise SudokuInputError("Invalid input. Only numbers from 1 to 9 are allowed.")
 
-    def is_consistent(self):
-        """ Detects collisions. Technically this function just returns False
-        if there is a cell in self.table which is empty (no 
-        candidates left) """
-        return bool(min([len(cell) for col in self.table for cell in col]))
 
     def __str__(self):
         """ Pretty printer. This loses information, so that it can be easily 
