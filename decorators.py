@@ -13,7 +13,7 @@ memotables = {}
 @decorator
 def memo(f): 
     """ memoize a function """
-    memo = memotables[f.__name__] = {} #initialize memo for this function
+    memo = f.memo_table = {} #initialize memo for this function
     def f2(*args):
         try:
             result = memo[args]

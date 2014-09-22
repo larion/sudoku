@@ -153,15 +153,23 @@ def test_sudoku_class(): #rebuild this function
     print "sudoku.regions: \n{}".format(sudoku.regions)
 
     print "OK. Let's see how fast we can solve some puzzle collections."
-    #benchmarklist = [ ("50 puzzles from Project Euler", "puzzles/euler_puzzles_50.txt", "puzzles/euler_solutions_50.txt"),
-    #        ("95 hard puzzles", "puzzles/hard_puzzles_95.txt", "puzzles/hard_solutions_95.txt") ]
-    benchmarklist = [("5 hard puzzles", "puzzles/hard_puzzles_5.txt", "puzzles/hard_solutions_5.txt") ] # for quick profiling
+
+    # 50 easy, 95 hard
+    benchmarklist = [ ("50 puzzles from Project Euler", "puzzles/euler_puzzles_50.txt", "puzzles/euler_solutions_50.txt"),
+            ("95 hard puzzles", "puzzles/hard_puzzles_95.txt", "puzzles/hard_solutions_95.txt") ]
+
+    #5 hard
+    #benchmarklist = [("5 hard puzzles", "puzzles/hard_puzzles_5.txt", "puzzles/hard_solutions_5.txt") ] # for quick profiling
+
+    #50 easy
+    #benchmarklist = [ ("50 puzzles from Project Euler", "puzzles/euler_puzzles_50.txt", "puzzles/euler_solutions_50.txt")]
+
     for collection_name, path_puzzle, path_solution in benchmarklist:
         print collection_name
         with open(path_puzzle) as puzzles, open(path_solution,"w") as solutions:
             before = time.clock()
             collection = SudokuCollection(puzzles)
-            collection.solve_all(solutions, verbose=False) #TODO make verbosity a command line parameter
+            collection.solve_all(solutions, verbose=True) #TODO make verbosity a command line parameter
             puzzleno = len(collection.sudokus) #number of sudokus, TODO: implement API
             after = time.clock()
             elapsed = after-before

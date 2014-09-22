@@ -7,7 +7,6 @@
 #
 #   things to try out
 #
-#      make a specific copy function for self.table
 #      memoize helper functions (make them pure functions first)
 #      raise exception when inconsistency is detected
 #
@@ -35,6 +34,7 @@ import copy
 import sys
 
 from decorators import *
+from collections import defaultdict
 
 class SudokuError(Exception):
     pass
@@ -116,9 +116,11 @@ class Sudoku(object):
                         ("to retrieve the puzzle"))
         except ValueError:
             raise SudokuInputError
-        self.set_regions()
+        self.initialize_regions()
         self.initialize_peers()
+        self.initialize_get_containing_methods()
         self._solve1_visited = []
+
 
     # high-level solving functions
 
@@ -127,7 +129,9 @@ class Sudoku(object):
         puzzle. It returns False if the puzzle is inconsistent
         and True otherwise.""" 
         # iterate solve1(), solve2() and solve3() until stuck.
-        solvers = [self.solve1, self.solve2, self.solve3]
+        # turns out that repeating solve1 3 times is the optimal
+        # thing to do.
+        solvers = [self.solve1]*3 + [self.solve2, self.solve3]
         if self.repeat_until_stuck(solvers): 
             return True
         else:
@@ -143,21 +147,21 @@ class Sudoku(object):
         table_copy = self.table.copy()
         mincell = min([ (len(cell), cell) 
             for cell in table_copy.itervalues() if len(cell)>1], key=lambda x: x[0])[1]
-        mincell_copy = mincell[:]
-        del mincell[:]
+        mincell_copy = mincell.copy()
+        mincell.clear()
         for cand in mincell_copy:
-            mincell.append(cand)
+            mincell.add(cand)
             #print mincell_copy, cand
             #print table_copy
             child = Sudoku(indict=table_copy)
             if child.solve():
                 self.table = child.table
                 return True
-            del mincell[:]
+            mincell.clear()
         else:
             return False
 
-    def solve1(self): #TODO: don't revisit cells
+    def solve1(self): 
         """ For all regions check if there is only one cell left in
         it. If so, fill in the last cell accordingly. Do this until
         stuck. """
@@ -166,7 +170,7 @@ class Sudoku(object):
                 cell = self.table[(col,row)] 
                 if len(cell)==1 and (col,row) not in self._solve1_visited:
                     self._solve1_visited.append((col,row))
-                    value = cell[0]
+                    (value,) = cell # unpack the element from this singleton set
                     # loop through all the cells where the same 
                     # value would result in a collision and try
                     # to delete value from the list of possible
@@ -174,7 +178,7 @@ class Sudoku(object):
                     for (col2, row2) in self.peers(col,row):
                             try:
                                 self.table[(col2,row2)].remove(value)
-                            except ValueError:
+                            except KeyError:
                                 pass
 
     def solve2(self):
@@ -184,7 +188,6 @@ class Sudoku(object):
         solve 1"""
         for region in self.regions:
             for no in xrange(1,10):
-                #possible = [self.table[coord] for coord in region if no in self.table[coord]]
                 possible = []
                 for coord in region:
                     if no in self.table[coord]:
@@ -196,10 +199,10 @@ class Sudoku(object):
                     if len(possible)!=1: continue
                     cell = possible[0]
                     if cell: #we don't want to "repair" inconsistent puzzles #TODO is this enough?
-                        del cell[:]
-                        cell.append(no)
+                        cell.clear()
+                        cell.add(no)
 
-    def solve3(self): #this makes solve1() redundant TODO really?
+    def solve3(self): 
         """ For all regions and numbers check the subregion (subr_1) where this
         candidate number is possible. If this subregion is also a subregion of
         another region (subr_2), then we can delete all the number candidate
@@ -209,20 +212,55 @@ class Sudoku(object):
         https://www.sudokuoftheday.com/techniques/candidate-lines/ 
         """
         numbers = range(1,10)
-        for region in self.regions:
+        for region in self.lines: #scan for lines that intersect boxes
         #loop through the subregions defined by the candidate numbers:
             for n in numbers:
-                subregion = self.subregion_coords(n, region)
-                for region2 in self.regions:
-                    if not subregion <= region2: 
-                        continue
-                    target = region2 - subregion
+                subregion = frozenset(coord for coord in region if n in self.table[coord])
+                superbox = self.get_containing_box(subregion)
+                if superbox:
+                    target = superbox - subregion
                     for coord in target:
                         try:
                             self.table[coord].remove(n)
-                        except ValueError: pass
+                        except KeyError: 
+                            pass
+
+        for region in self.boxes: #scan for boxes that intersect lines
+        #loop through the subregions defined by the candidate numbers:
+            for n in numbers:
+                subregion = frozenset(coord for coord in region if n in self.table[coord])
+                superline = self.get_containing_line(subregion)
+                if superline:
+                    target = superline - subregion
+                    for coord in target:
+                        try:
+                            self.table[coord].remove(n)
+                        except KeyError: 
+                            pass
 
     #middle level helper methods
+
+    @classmethod
+    def initialize_get_containing_methods(cls): #TODO document, find a better name
+        if hasattr(cls, "superboxes"):
+            return
+        cls.superboxes=defaultdict(set)
+        cls.superlines=defaultdict(set)
+        for box in cls.boxes:
+            pairs = itertools.permutations(box,2)
+            triplets = itertools.permutations(box,3)
+            subregions = itertools.chain(pairs,triplets)
+            for subregion in subregions:
+                cls.superboxes[frozenset(subregion)]=box
+        for line in cls.lines:
+            pairs = itertools.permutations(line,2)
+            triplets = itertools.permutations(line,3)
+            subregions = itertools.chain(pairs,triplets)
+            for subregion in subregions:
+                cls.superlines[frozenset(subregion)]=line
+
+    def get_containing_line(self, region): return self.superlines[region]
+    def get_containing_box(self, region): return self.superboxes[region]
 
     @classmethod
     def initialize_peers(cls): 
@@ -243,7 +281,7 @@ class Sudoku(object):
         return self.peersdict[(coll, row)]
 
     @classmethod
-    def set_regions(cls): 
+    def initialize_regions(cls): 
         """ Initializes regions. """
         if hasattr(cls,"regions"): 
             return
@@ -254,10 +292,8 @@ class Sudoku(object):
         rows  = [frozenset((x,y) for y in range(9)) for x in range(9)]
         cols  = [frozenset((x,y) for x in range(9)) for y in range(9)]
         cls.regions = subsquares + rows + cols
-
-    def subregion_coords(self, no, region): #TODO document, can't we inline this? Also make test for this!
-        """ returns those cells of region, where no is a candidate """
-        return set(coord for coord in region if no in self.table[coord])
+        cls.boxes = subsquares
+        cls.lines = rows + cols
 
     def repeat_until_stuck(self, function): 
         """ Iterates a solving function until it gets stuck (i. e. self.table
@@ -278,6 +314,8 @@ class Sudoku(object):
                 func()
                 if self.is_solved():
                     return True
+                if not self.is_consistent(): #TODO only do this with solve1
+                    return False
             table_actual_hash = self.get_table_hash()
         return False
 
@@ -310,8 +348,14 @@ class Sudoku(object):
     
     def read_dict(self, indict):
         """ reads a dictionary and copies it to self.table """
-        self.table = copy.deepcopy(indict)
+        self.table = self.copy_table(indict)
         self.check_table() # TODO move this to __init__
+
+    @staticmethod
+    def copy_table(table):
+        """ returns a deep copy of a table (a representation of the sudoku board) """
+        return {coord: cand_set.copy() for coord, cand_set in table.iteritems()}
+
 
     def read_file(self, infile): 
         """ reads in input file to self.table"""
@@ -334,7 +378,7 @@ class Sudoku(object):
         self.table = dict()
         for row in xrange(9):
             for col in xrange(9):
-                self.table[(row,col)]=self.char_to_cand_list(instr[row*9+col])
+                self.table[(row,col)]=set(self.char_to_cand_list(instr[row*9+col]))
         self.check_table()
 
     def check_table(self):
@@ -368,7 +412,7 @@ class Sudoku(object):
             for row in range(9):
                 cell = self.table[(col,row)]
                 if len(cell)==1:
-                    out=out+str(cell[0]).center(3)
+                    out=out+str(next(iter(cell))).center(3)
                 else:
                     out=out+"_".center(3)
             out = out+"\n"
