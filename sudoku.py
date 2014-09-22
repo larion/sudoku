@@ -5,9 +5,11 @@
 #
 # TODO
 #
-# urgent: performance leak -> when backtracking every new Sudoku instance
-# initializes regions which takes a lot of time (refactor self.table
-# to be a dict? This would also help with memoization!)
+#   things to try out
+#
+#      make a specific copy function for self.table
+#      memoize helper functions (make them pure functions first)
+#      raise exception when inconsistency is detected
 #
 # - raise exception on inputs that are too long
 #
@@ -25,6 +27,7 @@
 #
 # - test for readfile
 # - add specific tests for all solve functions
+# - add diff tests for the two collections!!
 #
 
 import itertools
@@ -45,7 +48,7 @@ def p(string):
 def d():
     import pdb; pdb.set_trace()
 
-class SudokuCollection(object):
+class SudokuCollection(object): #TODO add __len__
     """ Class that can store a collection of sudoku puzzles."""
     def __init__(self, sudokufile):
         self.sudokus=[]
@@ -63,15 +66,16 @@ class SudokuCollection(object):
         if v: print "Solving {!s} sudokus.".format(total)
         for i, sudoku in enumerate(self):
             if v: print sudoku
-            sudoku.solve()
+            if not sudoku.solve():
+                print "Warning: bogus puzzle."
             if v: print sudoku
             if v: print "{!s} out of {!s} sudokus solved.".format(i+1, total)
         if outfile:
             if v: print "Writing output to file."
-            for sudoku in self:
-                for row in sudoku.table:
-                    for cell in row:
-                        outfile.write(str(cell[0]))
+            for sudoku in self: #TODO call repr or stg.
+                for col in xrange(9):
+                    for row in xrange(9):
+                        outfile.write(str(sudoku.table[(col,row)]))
                 outfile.write("\n")
             if v: print "Done."
         return "Success"
@@ -114,6 +118,7 @@ class Sudoku(object):
             raise SudokuInputError
         self.set_regions()
         self.initialize_peers()
+        self._solve1_visited = []
 
     # high-level solving functions
 
@@ -135,13 +140,15 @@ class Sudoku(object):
     def bt(self):
         """ backtracking function if other techniques
         fail """
-        table_copy = copy.deepcopy(self.table)
+        table_copy = self.table.copy()
         mincell = min([ (len(cell), cell) 
-            for cell in self.table.itervalues() if len(cell)>1], key=lambda x: x[0])[1]
+            for cell in table_copy.itervalues() if len(cell)>1], key=lambda x: x[0])[1]
         mincell_copy = mincell[:]
         del mincell[:]
         for cand in mincell_copy:
             mincell.append(cand)
+            #print mincell_copy, cand
+            #print table_copy
             child = Sudoku(indict=table_copy)
             if child.solve():
                 self.table = child.table
@@ -157,15 +164,16 @@ class Sudoku(object):
         for col in xrange(9):
             for row in xrange(9):
                 cell = self.table[(col,row)] 
-                if len(cell)==1:
+                if len(cell)==1 and (col,row) not in self._solve1_visited:
+                    self._solve1_visited.append((col,row))
                     value = cell[0]
                     # loop through all the cells where the same 
                     # value would result in a collision and try
                     # to delete value from the list of possible
                     # candidates:
-                    for cell2 in self.peers(col,row):
+                    for (col2, row2) in self.peers(col,row):
                             try:
-                                cell2.remove(value)
+                                self.table[(col2,row2)].remove(value)
                             except ValueError:
                                 pass
 
@@ -176,14 +184,22 @@ class Sudoku(object):
         solve 1"""
         for region in self.regions:
             for no in xrange(1,10):
-                possible = self.subregion(no, region)
-                if len(possible) == 1: #found a cell where there is only one number possible
+                #possible = [self.table[coord] for coord in region if no in self.table[coord]]
+                possible = []
+                for coord in region:
+                    if no in self.table[coord]:
+                        if len(possible)==1:
+                            break
+                        else:
+                            possible.append(self.table[coord])
+                else:
+                    if len(possible)!=1: continue
                     cell = possible[0]
                     if cell: #we don't want to "repair" inconsistent puzzles #TODO is this enough?
                         del cell[:]
                         cell.append(no)
 
-    def solve3(self): #this makes solve1() redundant
+    def solve3(self): #this makes solve1() redundant TODO really?
         """ For all regions and numbers check the subregion (subr_1) where this
         candidate number is possible. If this subregion is also a subregion of
         another region (subr_2), then we can delete all the number candidate
@@ -199,7 +215,7 @@ class Sudoku(object):
                 subregion = self.subregion_coords(n, region)
                 for region2 in self.regions:
                     if not subregion <= region2: 
-                        return
+                        continue
                     target = region2 - subregion
                     for coord in target:
                         try:
@@ -208,14 +224,17 @@ class Sudoku(object):
 
     #middle level helper methods
 
-    def initialize_peers(self):
+    @classmethod
+    def initialize_peers(cls): 
         """ Initialize a list of peers for each cell in self.peers, so that we
         don't have to generate this list every time. """
-        self.peersdict={}
+        if hasattr(cls, "peersdict"):
+            return
+        cls.peersdict={}
         for col in xrange(9):
             for row in xrange(9):
-                self.peersdict[(col,row)] = [self.table[(col_peer, row_peer)]
-                for region in self.regions 
+                cls.peersdict[(col,row)] = [(col_peer, row_peer)
+                for region in cls.regions 
                 if (col,row) in region
                 for (col_peer, row_peer) in region
                 if (col_peer, row_peer) != (col, row)]
@@ -223,23 +242,18 @@ class Sudoku(object):
     def peers(self, coll, row):
         return self.peersdict[(coll, row)]
 
-    def set_regions(self): 
+    @classmethod
+    def set_regions(cls): 
         """ Initializes regions. """
+        if hasattr(cls,"regions"): 
+            return
         prod = itertools.product
         projections = [range(3), range(3, 6), range(6,9)]
         subsquares = [frozenset((row, col) for row, col in prod(x,y))
             for x, y in prod(projections, projections)]
         rows  = [frozenset((x,y) for y in range(9)) for x in range(9)]
         cols  = [frozenset((x,y) for x in range(9)) for y in range(9)]
-        self.regions = subsquares + rows + cols
-    
-    def is_cell_in_region(self, cell, region): #TODO delete this
-        """ checks whether a cell instance is in a region """
-        return any(cell is cell2 for cell2 in region)
-
-    def subregion(self, no, region): #TODO can't this be a genexpr?
-        """ returns those cells of region, where no is a candidate """
-        return [self.table[coord] for coord in region if no in self.table[coord]]
+        cls.regions = subsquares + rows + cols
 
     def subregion_coords(self, no, region): #TODO document, can't we inline this? Also make test for this!
         """ returns those cells of region, where no is a candidate """
@@ -253,13 +267,18 @@ class Sudoku(object):
             tasks = [function]
         else:
             tasks = function
-        table=[]
-        while table != self.table:
-            table = copy.deepcopy(self.table)
+        table_old_hash=None
+        table_actual_hash = self.get_table_hash()
+        while table_old_hash != table_actual_hash: 
+            # Hashing might lead to some false positives, still
+            # I think this is a good performance tradeoff
+            # when compared to copying.
+            table_old_hash = self.get_table_hash()
             for func in tasks:
                 func()
                 if self.is_solved():
                     return True
+            table_actual_hash = self.get_table_hash()
         return False
 
     def is_solved(self):
@@ -275,6 +294,10 @@ class Sudoku(object):
 
     # low-level internal processing methods
 
+    def get_table_hash(self):
+        table_tuple = frozenset([(key, tuple(value)) for key, value in self.table.items()])
+        return hash(table_tuple)
+
     def char_to_cand_list(self, char):
         """ convert a character to a list of candidates according
         to the following pattern:
@@ -287,12 +310,12 @@ class Sudoku(object):
     
     def read_dict(self, indict):
         """ reads a dictionary and copies it to self.table """
-        self.table = copy.deepcopy(indict) #TODO do we need deepcopy?
+        self.table = copy.deepcopy(indict)
         self.check_table() # TODO move this to __init__
 
     def read_file(self, infile): 
         """ reads in input file to self.table"""
-        puzzle_str = map(self.char_to_cand_list, infile.read(81))
+        puzzle_str = infile.read(81)
         self.read_str(puzzle_str)
 
     def read_list(self, inlist): 
@@ -360,7 +383,7 @@ class Sudoku(object):
 
 if __name__ == "__main__":
     with open(sys.argv[1]) as infile:
-        sudoku = Sudoku(infile)
+        sudoku = Sudoku(infile=infile)
     print sudoku
     if sudoku.solve():
         print sudoku

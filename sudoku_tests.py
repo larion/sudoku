@@ -152,33 +152,20 @@ def test_sudoku_class(): #rebuild this function
     print "repr: \n {!r}".format(sudoku)
     print "sudoku.regions: \n{}".format(sudoku.regions)
 
-    sudoku = Sudoku(instr=validpuzzle) # is_no_in_region tests
-
-    sudoku = Sudoku(instr=srtestpuzzle) # subregion tests
-    assert sorted(sudoku.subregion(4, [(6,x) for x in range(9)])) == sorted([sudoku.table[(6,6)]])
-    assert sorted(sudoku.subregion(7, [(6,x) for x in range(9)])) == sorted([sudoku.table[(6,7)]])
-    assert sorted(sudoku.subregion(1, [(6,x) for x in range(9)])) == sorted([sudoku.table[(6,8)]])
-    assert sorted(sudoku.subregion(2, [(6,x) for x in range(9)])) == []
-    assert sorted(sudoku.subregion(3, [(6,x) for x in range(9)])) == []
-    assert sorted(sudoku.subregion(5, [(6,x) for x in range(9)])) == []
-    assert sorted(sudoku.subregion(8, [(6,x) for x in range(9)])) == []
-    assert sorted(sudoku.subregion(9, [(6,x) for x in range(9)])) == []
-    assert sudoku.subregion(1, [(x,y) for x in range(9) for y in range(9)]) == [sudoku.table[(5,4)], sudoku.table[(6,8)]]
-    assert sudoku.subregion(2, [(x,y) for x in range(9) for y in range(9)]) == [sudoku.table[(1,0)], sudoku.table[(4,3)], sudoku.table[(5,7)]]
-
     print "OK. Let's see how fast we can solve some puzzle collections."
-    benchmarklist = [ ("50 puzzles from Project Euler", "puzzles/euler_puzzles_50.txt", "puzzles/euler_solutions_50.txt"),
-            ("95 hard puzzles", "puzzles/hard_puzzles_95.txt", "puzzles/hard_solutions_95.txt") ]
+    #benchmarklist = [ ("50 puzzles from Project Euler", "puzzles/euler_puzzles_50.txt", "puzzles/euler_solutions_50.txt"),
+    #        ("95 hard puzzles", "puzzles/hard_puzzles_95.txt", "puzzles/hard_solutions_95.txt") ]
+    benchmarklist = [("5 hard puzzles", "puzzles/hard_puzzles_5.txt", "puzzles/hard_solutions_5.txt") ] # for quick profiling
     for collection_name, path_puzzle, path_solution in benchmarklist:
         print collection_name
-        with open(path_puzzle) as puzzles, open("puzzles/euler_solutions_50.txt","w") as solutions:
+        with open(path_puzzle) as puzzles, open(path_solution,"w") as solutions:
             before = time.clock()
             collection = SudokuCollection(puzzles)
-            collection.solve_all(solutions, verbose=True)
+            collection.solve_all(solutions, verbose=False) #TODO make verbosity a command line parameter
             puzzleno = len(collection.sudokus) #number of sudokus, TODO: implement API
             after = time.clock()
             elapsed = after-before
-            average = elapsed/50.0
+            average = elapsed/puzzleno
             print "Solving {!s} puzzles took {!s} secs, avg: {!s} sec".format(puzzleno, elapsed, average) #TODO check results
     print "Tests succesful!"
     return True
