@@ -39,6 +39,12 @@ class SudokuError(Exception):
 class SudokuInputError(SudokuError):
     pass
 
+def p(string):
+    print "DEBUG: {!s}".format(string)
+
+def d():
+    import pdb; pdb.set_trace()
+
 class SudokuCollection(object):
     """ Class that can store a collection of sudoku puzzles."""
     def __init__(self, sudokufile):
@@ -81,7 +87,7 @@ class Sudoku(object):
     This combines simple elimination techniques (see Sudoku.solve1, Sudoku.solve2 andSudoku.solve3)
     with backtracking (which is only used when simple methods fail)."""
 
-    def __init__(self, infile=None, instr=None, inlist=None): 
+    def __init__(self, infile=None, instr=None, inlist=None, indict=None): 
         """ Read in puzzle from a file, a string or a list parameter.
         You should define only one kind of input, otherwise the result
         is undetermined
@@ -99,6 +105,8 @@ class Sudoku(object):
                 self.read_str(instr)
             elif inlist:
                 self.read_list(inlist)
+            elif indict:
+                self.read_dict(indict)
             else:
                 raise SudokuError(("The Sudoku class constructor needs a parameter ")
                         ("to retrieve the puzzle"))
@@ -128,14 +136,13 @@ class Sudoku(object):
         """ backtracking function if other techniques
         fail """
         table_copy = copy.deepcopy(self.table)
-        mincell = min([(len(cell), cell) 
-            for col in table_copy 
-            for cell in col if len(cell)>1], key=lambda x: x[0])[1]
+        mincell = min([ (len(cell), cell) 
+            for cell in self.table.itervalues() if len(cell)>1], key=lambda x: x[0])[1]
         mincell_copy = mincell[:]
         del mincell[:]
         for cand in mincell_copy:
             mincell.append(cand)
-            child = Sudoku(inlist=table_copy)
+            child = Sudoku(indict=table_copy)
             if child.solve():
                 self.table = child.table
                 return True
@@ -143,22 +150,24 @@ class Sudoku(object):
         else:
             return False
 
-    def solve1(self): 
+    def solve1(self): #TODO: don't revisit cells
         """ For all regions check if there is only one cell left in
         it. If so, fill in the last cell accordingly. Do this until
         stuck. """
-        for col in self.table:
-            for cell in col:
+        for col in xrange(9):
+            for row in xrange(9):
+                cell = self.table[(col,row)] 
                 if len(cell)==1:
                     value = cell[0]
                     # loop through all the cells where the same 
                     # value would result in a collision and try
                     # to delete value from the list of possible
                     # candidates:
-                    for cell2 in self.peers(cell):
+                    for cell2 in self.peers(col,row):
                             try:
                                 cell2.remove(value)
-                            except ValueError: pass
+                            except ValueError:
+                                pass
 
     def solve2(self):
         """For all regions and numbers not yet filled in, check if
@@ -168,10 +177,11 @@ class Sudoku(object):
         for region in self.regions:
             for no in xrange(1,10):
                 possible = self.subregion(no, region)
-                if len(possible) == 1: #found a number
-                    target = possible[0]
-                    for ind, no2 in enumerate(possible[0]): #delete all other candidates
-                        if no2!=no: del(possible[0][ind])
+                if len(possible) == 1: #found a cell where there is only one number possible
+                    cell = possible[0]
+                    if cell: #we don't want to "repair" inconsistent puzzles #TODO is this enough?
+                        del cell[:]
+                        cell.append(no)
 
     def solve3(self): #this makes solve1() redundant
         """ For all regions and numbers check the subregion (subr_1) where this
@@ -186,15 +196,14 @@ class Sudoku(object):
         for region in self.regions:
         #loop through the subregions defined by the candidate numbers:
             for n in numbers:
-                subregion = self.subregion(n, region)
+                subregion = self.subregion_coords(n, region)
                 for region2 in self.regions:
-                    # test if region2 contains subregion
-                    for cell in subregion:
-                        if not self.is_cell_in_region(cell, region2): return
-                    target = (cell for cell in region2 if not self.is_cell_in_region(cell, subregion))
-                    for cell in target:
+                    if not subregion <= region2: 
+                        return
+                    target = region2 - subregion
+                    for coord in target:
                         try:
-                            cell.remove(n)
+                            self.table[coord].remove(n)
                         except ValueError: pass
 
     #middle level helper methods
@@ -203,38 +212,38 @@ class Sudoku(object):
         """ Initialize a list of peers for each cell in self.peers, so that we
         don't have to generate this list every time. """
         self.peersdict={}
-        for col in self.table:
-            for cell in col:
-                self.peersdict[id(cell)] = [cell2 
+        for col in xrange(9):
+            for row in xrange(9):
+                self.peersdict[(col,row)] = [self.table[(col_peer, row_peer)]
                 for region in self.regions 
-                if self.is_cell_in_region(cell, region)
-                for cell2 in region
-                if cell2 is not cell]
+                if (col,row) in region
+                for (col_peer, row_peer) in region
+                if (col_peer, row_peer) != (col, row)]
 
-    def peers(self, cell):
-        return self.peersdict[id(cell)]
+    def peers(self, coll, row):
+        return self.peersdict[(coll, row)]
 
-    def set_regions(self): #TODO refactor
+    def set_regions(self): 
         """ Initializes regions. """
         prod = itertools.product
         projections = [range(3), range(3, 6), range(6,9)]
-        subsquares = [ [self.table[col][cell] for col, cell in prod(x,y)]
+        subsquares = [frozenset((row, col) for row, col in prod(x,y))
             for x, y in prod(projections, projections)]
-        rows  = [[ self.table[x][y] for y in range(9)] for x in range(9)]
-        cols  = [[ self.table[y][x] for y in range(9)] for x in range(9)]
+        rows  = [frozenset((x,y) for y in range(9)) for x in range(9)]
+        cols  = [frozenset((x,y) for x in range(9)) for y in range(9)]
         self.regions = subsquares + rows + cols
-
-    def is_no_in_region(self, no, region):
-        """ Checks whether a number is in a given region (box, row or column) """
-        return no in (x[0] for x in region if len(x)==1)
     
-    def is_cell_in_region(self, cell, region):
+    def is_cell_in_region(self, cell, region): #TODO delete this
         """ checks whether a cell instance is in a region """
         return any(cell is cell2 for cell2 in region)
 
-    def subregion(self, no, region):
+    def subregion(self, no, region): #TODO can't this be a genexpr?
         """ returns those cells of region, where no is a candidate """
-        return [cell for cell in region if no in cell]
+        return [self.table[coord] for coord in region if no in self.table[coord]]
+
+    def subregion_coords(self, no, region): #TODO document, can't we inline this? Also make test for this!
+        """ returns those cells of region, where no is a candidate """
+        return set(coord for coord in region if no in self.table[coord])
 
     def repeat_until_stuck(self, function): 
         """ Iterates a solving function until it gets stuck (i. e. self.table
@@ -256,15 +265,15 @@ class Sudoku(object):
     def is_solved(self):
         """ return True if the puzzle is solved,
         False otherwise """
-        return set([len(cell) for col in self.table for cell in col]) == set([1])
+        return all(len(cand_lst)==1 for cand_lst in self.table.itervalues())
                                     
     def is_consistent(self):
         """ Detects collisions. Technically this function just returns False
         if there is a cell in self.table which is empty (no 
         candidates left) """
-        return bool(min([len(cell) for col in self.table for cell in col]))
+        return all(cand_lst for cand_lst in self.table.itervalues())
 
-    # low level internal processing methods
+    # low-level internal processing methods
 
     def char_to_cand_list(self, char):
         """ convert a character to a list of candidates according
@@ -273,26 +282,36 @@ class Sudoku(object):
         1 -> [1], 2 -> [2], ...
         """
         every = range(1, 9+1)
-        if char == "0": return every[:]
+        if char == "0": return every
         else: return [int(char)]
+    
+    def read_dict(self, indict):
+        """ reads a dictionary and copies it to self.table """
+        self.table = copy.deepcopy(indict) #TODO do we need deepcopy?
+        self.check_table() # TODO move this to __init__
 
     def read_file(self, infile): 
         """ reads in input file to self.table"""
-        self.table = []
-        for _ in xrange(9):
-            self.table.append( map(self.char_to_cand_list, list(infile.read(9))) )
-        self.check_table()
+        puzzle_str = map(self.char_to_cand_list, infile.read(81))
+        self.read_str(puzzle_str)
 
     def read_list(self, inlist): 
         """ reads in input list to self.table """
-        self.table = copy.deepcopy(inlist)
+        self.table = dict()
+        listcopy = copy.deepcopy(inlist)
+        for i1, col in enumerate(listcopy):
+            for i2, cell in enumerate(col):
+                self.table[(i1,i2)]=cell
         self.check_table()
 
     def read_str(self, instr):
         """ reads in a string representation of a sudoku puzzle to self.table """
-        self.table = []
-        for i in xrange(9):
-                self.table.append( map(self.char_to_cand_list, instr[i*9:i*9+9]) ) 
+        if len(instr) < 81:
+            raise SudokuInputError("Invalid input. Grid geometry corrupt. ")
+        self.table = dict()
+        for row in xrange(9):
+            for col in xrange(9):
+                self.table[(row,col)]=self.char_to_cand_list(instr[row*9+col])
         self.check_table()
 
     def check_table(self):
@@ -301,22 +320,30 @@ class Sudoku(object):
         detect inconsistencies (i. e. collisions within regions). """
         numbers = range(1, 10)
         # there should be 9 columns:
-        if len(self.table) != 9: 
+        if len(set([a for (a,b) in self.table.keys()])) != 9: 
             raise SudokuInputError("Invalid input. Grid geometry corrupt. ")
         #and 9 cells in every columns:
-        elif set([len(a) for a in self.table]) != set([9]): 
-            raise SudokuInputError("Invalid input. Grid geometry corrupt.")
-        #and no numbers besides 1,2,...,9:
-        elif not set([num for col in self.table for cell in col for num in cell]).issubset(numbers):
-            raise SudokuInputError("Invalid input. Only numbers from 1 to 9 are allowed.")
+        #TODO de-obfuscate this?
+        for col in xrange(9):
+            rows = set(row for (x,row) in self.table.keys() if x == col)
+            if not len(rows) == 9:
+                raise SudokuInputError("Invalid input. Grid geometry corrupt.")
+        #if not all(len(set([y for (x,y) in self.table.keys() if x == col])) == 9 for col in xrange(9)):
+        #    raise SudokuInputError("Invalid input. Grid geometry corrupt.")
 
+        #and no numbers besides 1,2,...,9:
+        candidates = set(no for col in xrange(9) for row in xrange(9) for no in self.table[col,row])
+        if not candidates.issubset(numbers):
+            p(candidates)
+            raise SudokuInputError("Invalid input. Grid geometry corrupt.") #TODO more informative message here
 
     def __str__(self):
         """ Pretty printer. This loses information, so that it can be easily 
         readable by humans: it only prints out unambiguous cells. """
         out = ""
-        for col in self.table:
-            for cell in col:
+        for col in range(9):
+            for row in range(9):
+                cell = self.table[(col,row)]
                 if len(cell)==1:
                     out=out+str(cell[0]).center(3)
                 else:
@@ -324,7 +351,7 @@ class Sudoku(object):
             out = out+"\n"
         return out
         
-    def __repr__(self):
+    def __repr__(self): #TODO atm we can't read this in!
         """ The output of this function is the format that the class
         can read in as well (serialization) - a list of possibilities
         for all cells of the 9*9 grid. This doesn't lose any 
