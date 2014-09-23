@@ -131,14 +131,9 @@ class Sudoku(object):
         puzzle. It returns False if the puzzle is inconsistent
         and True otherwise.""" 
         # iterate solve1(), solve2() and solve3() until stuck.
-        # turns out that repeating solve1 3 times is the optimal
-        # thing to do.
-
-        #solvers = [self.solve1]*3 + [self.solve2, self.solve3]
-
-        # for optimizing solve1:
-        #solvers = [self.solve1, self.solve2]
-        solvers = self.solve1
+        solvers = [self.solve1, self.solve2, self.solve3]
+        # for finetuning:
+        # solvers = [self.solve1]*1 + [self.solve2]*1 + [self.solve3]*1
         if self.repeat_until_stuck(solvers): 
             return True
         else:
@@ -176,25 +171,24 @@ class Sudoku(object):
         while todo:
             col, row = todo.pop()
             cell = self.table[(col,row)] 
-            if len(cell)==1 and (col,row) not in self._solve1_visited:
-                self._solve1_visited.append((col,row))
-                (value,) = cell # unpack the element from this singleton set
-                # loop through all the cells where the same 
-                # value would result in a collision and try
-                # to delete value from the list of possible
-                # candidates:
-                for (col2, row2) in self.peers(col,row):
-                        cell = self.table[(col2,row2)]
-                        try:
-                            cell.remove(value)
-                        except KeyError:
-                            pass
-                        else:
-                            if not cell:
-                                return False
-                            if len(cell) == 1:
-                                self.solved.append((col2,row2))
-                                todo.append((col2,row2))
+            self._solve1_visited.append((col,row))
+            (value,) = cell # unpack the element from this singleton set
+            # loop through all the cells where the same 
+            # value would result in a collision and try
+            # to delete value from the list of possible
+            # candidates:
+            for (col2, row2) in self.peers(col,row):
+                    cell = self.table[(col2,row2)]
+                    try:
+                        cell.remove(value)
+                    except KeyError:
+                        pass
+                    else:
+                        if not cell:
+                            return False
+                        if len(cell) == 1:
+                            self.solved.append((col2,row2))
+                            todo.append((col2,row2))
         return True
 
     def solve2(self):
@@ -244,6 +238,12 @@ class Sudoku(object):
                             self.table[coord].remove(n)
                         except KeyError: 
                             pass
+                        else:
+                            if not self.table[coord]:
+                                return False
+                            if len(self.table[coord])==1:
+                                self.solved.append(coord)
+
         return True
 
         for region in self.boxes: #scan for boxes that intersect lines

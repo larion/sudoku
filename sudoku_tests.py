@@ -156,7 +156,7 @@ def test_sudoku_class(): #rebuild this function
 
     # 50 easy, 95 hard
     benchmarklist = [ ("50 puzzles from Project Euler", "puzzles/euler_puzzles_50.txt", "puzzles/euler_solutions_50.txt"),
-            ("95 hard puzzles", "puzzles/hard_puzzles_95.txt", "puzzles/hard_solutions_95.txt") ]
+                ("95 hard puzzles", "puzzles/hard_puzzles_95.txt", "puzzles/hard_solutions_95.txt") ]
 
     #5 hard
     #benchmarklist = [("5 hard puzzles", "puzzles/hard_puzzles_5.txt", "puzzles/hard_solutions_5.txt") ] # for quick profiling
@@ -169,7 +169,7 @@ def test_sudoku_class(): #rebuild this function
         with open(path_puzzle) as puzzles, open(path_solution,"w") as solutions:
             before = time.clock()
             collection = SudokuCollection(puzzles)
-            collection.solve_all(solutions, verbose=True) #TODO make verbosity a command line parameter
+            collection.solve_all(solutions, verbose=False) #TODO make verbosity a command line parameter
             puzzleno = len(collection.sudokus) #number of sudokus, TODO: implement API
             after = time.clock()
             elapsed = after-before
