@@ -102,6 +102,12 @@ class Sudoku(object):
         >>> mysudoku = Sudoku(inlist = mylist) # read list
         """ 
 
+        self.initialize_regions()
+        self.initialize_peers()
+        self.initialize_get_containing_methods()
+        self._solve1_visited = []
+        self.solved = []
+
         try:
             if infile:
                 self.read_file(infile)
@@ -116,10 +122,6 @@ class Sudoku(object):
                         ("to retrieve the puzzle"))
         except ValueError:
             raise SudokuInputError
-        self.initialize_regions()
-        self.initialize_peers()
-        self.initialize_get_containing_methods()
-        self._solve1_visited = []
 
 
     # high-level solving functions
@@ -131,7 +133,12 @@ class Sudoku(object):
         # iterate solve1(), solve2() and solve3() until stuck.
         # turns out that repeating solve1 3 times is the optimal
         # thing to do.
-        solvers = [self.solve1]*3 + [self.solve2, self.solve3]
+
+        #solvers = [self.solve1]*3 + [self.solve2, self.solve3]
+
+        # for optimizing solve1:
+        #solvers = [self.solve1, self.solve2]
+        solvers = self.solve1
         if self.repeat_until_stuck(solvers): 
             return True
         else:
@@ -145,15 +152,15 @@ class Sudoku(object):
         """ backtracking function if other techniques
         fail """
         table_copy = self.table.copy()
-        mincell = min([ (len(cell), cell) 
-            for cell in table_copy.itervalues() if len(cell)>1], key=lambda x: x[0])[1]
+        mincell_coord, mincell, _ = min([(coord, cell, len(cell)) 
+            for coord, cell in table_copy.iteritems() if len(cell)>1], key=lambda x: x[2])
         mincell_copy = mincell.copy()
         mincell.clear()
         for cand in mincell_copy:
             mincell.add(cand)
             #print mincell_copy, cand
             #print table_copy
-            child = SudokuChild(table_copy, self._solve1_visited)
+            child = SudokuChild(table_copy, self.solved+[mincell_coord], self._solve1_visited)
             if child.solve():
                 self.table = child.table
                 return True
@@ -165,21 +172,30 @@ class Sudoku(object):
         """ For all regions check if there is only one cell left in
         it. If so, fill in the last cell accordingly. Do this until
         stuck. """
-        for col in xrange(9):
-            for row in xrange(9):
-                cell = self.table[(col,row)] 
-                if len(cell)==1 and (col,row) not in self._solve1_visited:
-                    self._solve1_visited.append((col,row))
-                    (value,) = cell # unpack the element from this singleton set
-                    # loop through all the cells where the same 
-                    # value would result in a collision and try
-                    # to delete value from the list of possible
-                    # candidates:
-                    for (col2, row2) in self.peers(col,row):
-                            try:
-                                self.table[(col2,row2)].remove(value)
-                            except KeyError:
-                                pass
+        todo = [(col,row) for col,row in self.solved if (col,row) not in self._solve1_visited]
+        while todo:
+            col, row = todo.pop()
+            cell = self.table[(col,row)] 
+            if len(cell)==1 and (col,row) not in self._solve1_visited:
+                self._solve1_visited.append((col,row))
+                (value,) = cell # unpack the element from this singleton set
+                # loop through all the cells where the same 
+                # value would result in a collision and try
+                # to delete value from the list of possible
+                # candidates:
+                for (col2, row2) in self.peers(col,row):
+                        cell = self.table[(col2,row2)]
+                        try:
+                            cell.remove(value)
+                        except KeyError:
+                            pass
+                        else:
+                            if not cell:
+                                return False
+                            if len(cell) == 1:
+                                self.solved.append((col2,row2))
+                                todo.append((col2,row2))
+        return True
 
     def solve2(self):
         """For all regions and numbers not yet filled in, check if
@@ -189,18 +205,22 @@ class Sudoku(object):
         for region in self.regions:
             for no in xrange(1,10):
                 possible = []
+                target_col, target_row = None, None
                 for coord in region:
                     if no in self.table[coord]:
                         if len(possible)==1:
                             break
                         else:
                             possible.append(self.table[coord])
+                            target_col, target_row = coord
                 else:
                     if len(possible)!=1: continue
                     cell = possible[0]
-                    if cell: #we don't want to "repair" inconsistent puzzles #TODO is this enough?
+                    if cell: #we don't want to "repair" inconsistent puzzles
                         cell.clear()
                         cell.add(no)
+                        self.solved.append((target_col, target_row))
+        return True
 
     def solve3(self): 
         """ For all regions and numbers check the subregion (subr_1) where this
@@ -224,6 +244,7 @@ class Sudoku(object):
                             self.table[coord].remove(n)
                         except KeyError: 
                             pass
+        return True
 
         for region in self.boxes: #scan for boxes that intersect lines
         #loop through the subregions defined by the candidate numbers:
@@ -311,11 +332,12 @@ class Sudoku(object):
             # when compared to copying.
             table_old_hash = self.get_table_hash()
             for func in tasks:
-                func()
+                if not func():
+                    return False
                 if self.is_solved():
                     return True
-                if not self.is_consistent(): #TODO only do this with solve1
-                    return False
+                #if not self.is_consistent(): 
+                #    return False
             table_actual_hash = self.get_table_hash()
         return False
 
@@ -378,7 +400,9 @@ class Sudoku(object):
         self.table = dict()
         for row in xrange(9):
             for col in xrange(9):
-                self.table[(row,col)]=set(self.char_to_cand_list(instr[row*9+col]))
+                self.table[(row,col)] = set(self.char_to_cand_list(instr[row*9+col]))
+                if len(self.table[(row,col)])==1:
+                    self.solved.append((row,col))
         self.check_table()
 
     def check_table(self):
@@ -426,9 +450,10 @@ class Sudoku(object):
         return repr(self.table)
 
 class SudokuChild(Sudoku):
-    def __init__(self, table, solve1_visited):
+    def __init__(self, table, solved, solve1_visited):
         self.table=self.copy_table(table) #TODO should I use super()?
         self._solve1_visited = solve1_visited[:]
+        self.solved = solved[:]
 
 if __name__ == "__main__":
     with open(sys.argv[1]) as infile:
