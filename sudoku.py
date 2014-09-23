@@ -153,7 +153,7 @@ class Sudoku(object):
             mincell.add(cand)
             #print mincell_copy, cand
             #print table_copy
-            child = Sudoku(indict=table_copy)
+            child = SudokuChild(table_copy, self._solve1_visited)
             if child.solve():
                 self.table = child.table
                 return True
@@ -424,6 +424,11 @@ class Sudoku(object):
         for all cells of the 9*9 grid. This doesn't lose any 
         information. """
         return repr(self.table)
+
+class SudokuChild(Sudoku):
+    def __init__(self, table, solve1_visited):
+        self.table=self.copy_table(table) #TODO should I use super()?
+        self._solve1_visited = solve1_visited[:]
 
 if __name__ == "__main__":
     with open(sys.argv[1]) as infile:
