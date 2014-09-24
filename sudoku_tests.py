@@ -140,7 +140,6 @@ def test_sudoku_class(): #rebuild this function
 
     for incons in puzzles_inconsistent: #inconsistent puzzles test
         sudoku = Sudoku(instr=incons)
-        sudoku.solve()
         assert not sudoku.is_consistent()
 
     sudoku = Sudoku(instr=validpuzzle) # OK, let's see a valid puzzle
@@ -169,12 +168,14 @@ def test_sudoku_class(): #rebuild this function
         with open(path_puzzle) as puzzles, open(path_solution,"w") as solutions:
             before = time.clock()
             collection = SudokuCollection(puzzles)
-            collection.solve_all(solutions, verbose=False) #TODO make verbosity a command line parameter
+            collection.solve_all(solutions, verbose=True) #TODO make verbosity a command line parameter
             puzzleno = len(collection.sudokus) #number of sudokus, TODO: implement API
             after = time.clock()
             elapsed = after-before
             average = elapsed/puzzleno
             print "Solving {!s} puzzles took {!s} secs, avg: {!s} sec".format(puzzleno, elapsed, average) #TODO check results
+            for puzzle in collection:
+                assert puzzle.is_consistent()
     print "Tests succesful!"
     return True
 

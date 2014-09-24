@@ -5,10 +5,11 @@
 #
 # TODO
 #
-#   things to try out
-#
-#      memoize helper functions (make them pure functions first)
-#      raise exception when inconsistency is detected
+# - combine solve1 and solve2 (propagation)
+# - memoize helper functions (make them pure functions first)
+# - raise exception when inconsistency is detected
+# - memoize everything (refractor to be able to memoize functions that
+# have mutable parameters)
 #
 # - raise exception on inputs that are too long
 #
@@ -17,10 +18,7 @@
 # - generate extremely hard sudokus (measure the time it takes for this
 # program to solve it or the amount of backtracking needed)
 # - add --verbose switch to Sudoku
-#
-# - decent output :) (gui?)
-# - memoize everything (refractor to be able to memoize functions that
-# have mutable parameters)
+# - add feature to list all solutions not only the first found
 #
 # TESTS TODO
 #
@@ -138,7 +136,7 @@ class Sudoku(object):
             return True
         else:
             # if the solvers don't solve the puzzle
-            if self.is_consistent(): # and seems consistent
+            if self._is_consistent(): # and seems consistent
                 return self.bt() # do some backtracking
             else:
                 return False
@@ -170,25 +168,18 @@ class Sudoku(object):
         todo = [(col,row) for col,row in self.solved if (col,row) not in self._solve1_visited]
         while todo:
             col, row = todo.pop()
-            cell = self.table[(col,row)] 
             self._solve1_visited.append((col,row))
-            (value,) = cell # unpack the element from this singleton set
+            value = self.get_cell(col,row) 
             # loop through all the cells where the same 
             # value would result in a collision and try
-            # to delete value from the list of possible
-            # candidates:
+            # to delete value from their candidate lists
             for (col2, row2) in self.peers(col,row):
-                    cell = self.table[(col2,row2)]
-                    try:
-                        cell.remove(value)
-                    except KeyError:
-                        pass
-                    else:
-                        if not cell:
-                            return False
-                        if len(cell) == 1:
-                            self.solved.append((col2,row2))
-                            todo.append((col2,row2))
+                if not self.elim_cand(col2,row2,value): #contradiction found
+                    return False
+                if len(self.get_clist(col2,row2))==1 and \
+                (col2,row2) not in self._solve1_visited:
+                    todo.append((col2,row2))
+                    #self._solve1_visited.append((col,row))
         return True
 
     def solve2(self):
@@ -200,20 +191,21 @@ class Sudoku(object):
             for no in xrange(1,10):
                 possible = []
                 target_col, target_row = None, None
-                for coord in region:
-                    if no in self.table[coord]:
+                for row,col in region:
+                    if no in self.get_clist(row, col):
                         if len(possible)==1:
                             break
                         else:
-                            possible.append(self.table[coord])
-                            target_col, target_row = coord
+                            possible.append(self.table[row,col])
+                            target_col, target_row = row,col
                 else:
                     if len(possible)!=1: continue
-                    cell = possible[0]
-                    if cell: #we don't want to "repair" inconsistent puzzles
-                        cell.clear()
-                        cell.add(no)
-                        self.solved.append((target_col, target_row))
+                    self.assign(target_col, target_row, no)
+                    #cell = possible[0]
+                    #if cell: #we don't want to "repair" inconsistent puzzles
+                    #    cell.clear()
+                    #    cell.add(no)
+                    #    self.solved.append((target_col, target_row))
         return True
 
     def solve3(self): 
@@ -227,39 +219,75 @@ class Sudoku(object):
         """
         numbers = range(1,10)
         for region in self.lines: #scan for lines that intersect boxes
-        #loop through the subregions defined by the candidate numbers:
+        #Loop through the subregions defined by the candidate numbers:
             for n in numbers:
-                subregion = frozenset(coord for coord in region if n in self.table[coord])
+                subregion = frozenset(coord for coord in region if n in self.get_clist(*coord))
                 superbox = self.get_containing_box(subregion)
                 if superbox:
                     target = superbox - subregion
-                    for coord in target:
-                        try:
-                            self.table[coord].remove(n)
-                        except KeyError: 
-                            pass
-                        else:
-                            if not self.table[coord]:
+                    for col, row in target:
+                        # Eliminate candidate. If a contradiction
+                        # is detected return false.
+                        if not self.elim_cand(col,row, n):
                                 return False
-                            if len(self.table[coord])==1:
-                                self.solved.append(coord)
-
-        return True
-
+    
         for region in self.boxes: #scan for boxes that intersect lines
-        #loop through the subregions defined by the candidate numbers:
             for n in numbers:
-                subregion = frozenset(coord for coord in region if n in self.table[coord])
+                subregion = frozenset(coord for coord in region if n in self.get_clist(*coord))
                 superline = self.get_containing_line(subregion)
                 if superline:
                     target = superline - subregion
-                    for coord in target:
-                        try:
-                            self.table[coord].remove(n)
-                        except KeyError: 
-                            pass
+                    for col, row in target:
+                        if not self.elim_cand(col,row, n): 
+                                return False
+        return True
 
     #middle level helper methods
+
+    def get_cell(self, col, row):
+        """ Returns the value of a cell that has already been filled in.
+        If the cell contains more than one element or if all candidates are
+        eliminated, then return None 
+        """
+        try:
+            (value,) = self.table[(col,row)] #extract the value
+        except ValueError: #cand list is not a singleton set
+            return None 
+        return value
+
+    def get_clist(self, col,row):
+        """ Returns the candidate list for a cell. """
+        return self.table[(col,row)]
+
+    def assign(self, col,row, value):
+        """ Assign a value to a cell. If the cell
+        is empty return False.
+        """
+        cell = self.table[(col, row)]
+        if not cell: return False
+        cell.clear()
+        cell.add(value)
+        if (col, row) not in self.solved: #TODO make self.solved a set?
+            self.solved.append((col,row))
+        return True
+
+    def elim_cand(self, col, row, value):
+        """ Eliminate a candidate from a candidate
+        list. If the candidate list becomes empty 
+        return False.
+        """
+        cell = self.table[(col, row)]
+        cell.discard(value)
+        if not cell: return False
+        if len(cell) == 1 and (col,row) not in self.solved:
+            self.solved.append((col,row))
+        return True
+
+    def cand_no(self):
+        """ return the total number of candidates in all cells.
+        This function is useful for comparing different solving
+        functions. """
+        return len([(col, row, cand) for col in range(9) for row in range(9) for cand in self.get_clist(col,row)])
 
     @classmethod
     def initialize_get_containing_methods(cls): #TODO document, find a better name
@@ -336,7 +364,7 @@ class Sudoku(object):
                     return False
                 if self.is_solved():
                     return True
-                #if not self.is_consistent(): 
+                #if not self._is_consistent(): 
                 #    return False
             table_actual_hash = self.get_table_hash()
         return False
@@ -346,11 +374,19 @@ class Sudoku(object):
         False otherwise """
         return all(len(cand_lst)==1 for cand_lst in self.table.itervalues())
                                     
-    def is_consistent(self):
-        """ Detects collisions. Technically this function just returns False
-        if there is a cell in self.table which is empty (no 
-        candidates left) """
+    def _is_consistent(self):
+        """ Detects collisions. Technically this internal function just returns
+        False if there is a cell in self.table which is empty (no candidates
+        left). It does NOT check if there are undetected collisions. """
         return all(cand_lst for cand_lst in self.table.itervalues())
+
+    def is_consistent(self):
+        """ Detects collisions. This is the function that should be called by
+        outside agents and test suites to test if an already solved puzzle is consistent. """
+        numbers = "123456789"
+        if self._is_consistent: # basic check. If there are empty cells, we can't use sorted().
+            return all("".join(map(str, sorted([self.get_cell(row,col) for row, col in region])))==numbers 
+                for region in self.regions)
 
     # low-level internal processing methods
 
@@ -433,13 +469,18 @@ class Sudoku(object):
         readable by humans: it only prints out unambiguous cells. """
         out = ""
         for col in range(9):
+            if col%3 == 0: 
+                out += "-"*21+"\n"
             for row in range(9):
+                if row%3==0: 
+                    out += "|"
                 cell = self.table[(col,row)]
                 if len(cell)==1:
-                    out=out+str(next(iter(cell))).center(3)
+                    out=out+str(next(iter(cell))).ljust(2)
                 else:
-                    out=out+"_".center(3)
-            out = out+"\n"
+                    out+="_".ljust(2)
+            out += "|\n"
+        out += "-"*21+"\n"
         return out
         
     def __repr__(self): #TODO atm we can't read this in!
@@ -450,7 +491,7 @@ class Sudoku(object):
         return repr(self.table)
 
 class SudokuChild(Sudoku):
-    def __init__(self, table, solved, solve1_visited):
+    def __init__(self, table, solved, solve1_visited): #TODO just give mother as parameter?
         self.table=self.copy_table(table) #TODO should I use super()?
         self._solve1_visited = solve1_visited[:]
         self.solved = solved[:]
