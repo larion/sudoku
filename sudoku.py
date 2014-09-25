@@ -5,11 +5,16 @@
 #
 # TODO
 #
-# - combine solve1 and solve2 (propagation)
-# - memoize helper functions (make them pure functions first)
-# - raise exception when inconsistency is detected
-# - memoize everything (refractor to be able to memoize functions that
-# have mutable parameters)
+# - document new behaviour of solve3
+# - delete solve2?
+# - don't check everything in solve3 only what is needed (keep
+# track of modified cells?)
+# - combine is_consistent functions into one function
+# - make sudokuboard a class, it needs to be encapsulated
+# - handle inconsistencies via exceptions not through return
+# values
+#
+# - memoization?
 #
 # - raise exception on inputs that are too long
 #
@@ -18,10 +23,11 @@
 # - generate extremely hard sudokus (measure the time it takes for this
 # program to solve it or the amount of backtracking needed)
 # - add --verbose switch to Sudoku
-# - add feature to list all solutions not only the first found
+# - add feature to list all solutions not only the first one
 #
 # TESTS TODO
 #
+# - ! write tests for all the non-trivial untested functions
 # - test for readfile
 # - add specific tests for all solve functions
 # - add diff tests for the two collections!!
@@ -129,7 +135,7 @@ class Sudoku(object):
         puzzle. It returns False if the puzzle is inconsistent
         and True otherwise.""" 
         # iterate solve1(), solve2() and solve3() until stuck.
-        solvers = [self.solve1, self.solve2, self.solve3]
+        solvers = [self.solve1, self.solve3]
         # for finetuning:
         #solvers = [self.solve1]*1 + [self.solve2]*1 + [self.solve3]*1
         if self.repeat_until_stuck(solvers): 
@@ -225,6 +231,11 @@ class Sudoku(object):
         #Loop through the subregions defined by the candidate numbers:
             for n in numbers:
                 subregion = frozenset(coord for coord in region if n in self.get_clist(*coord))
+                if len(subregion) == 1:
+                    (col, row) = next(iter(subregion))
+                    if not self.assign(col, row, n):
+                        return False
+                    continue
                 superbox = self.get_containing_box(subregion)
                 if superbox:
                     target = superbox - subregion
@@ -237,6 +248,11 @@ class Sudoku(object):
         for region in self.boxes: #scan for boxes that intersect lines
             for n in numbers:
                 subregion = frozenset(coord for coord in region if n in self.get_clist(*coord))
+                if len(subregion) == 1:
+                    (col, row) = next(iter(subregion))
+                    if not self.assign(col, row, n):
+                        return False
+                    continue
                 superline = self.get_containing_line(subregion)
                 if superline:
                     target = superline - subregion
@@ -364,9 +380,9 @@ class Sudoku(object):
             for func in tasks:
                 if not func():
                     return False
-                if not self.is_consistent(): 
-                    return False
                 if self.is_solved():
+                    #if not self.is_consistent(): #make up your mind about this 
+                    #    return False
                     return True
             table_actual_hash = self.get_table_hash()
         return False
@@ -390,6 +406,17 @@ class Sudoku(object):
             for region in self.regions:
                 vals = filter(lambda x: x, [self.get_cell(row,col) for row, col in region])
                 if len(vals) != len(set(vals)): return False
+            return True
+        return False
+
+    def is_consistent_tmp(self): #TODO do sth about these functions
+        """ Detects collisions. This is the function that should be called by
+        outside agents and test suites to test if an already solved puzzle is consistent. """
+        if self._is_consistent(): # basic check. If there are empty cells, we can't use sorted().
+            for region in self.regions:
+                vals = filter(lambda x: x, [self.get_cell(row,col) for row, col in region])
+                if len(vals) != len(set(vals)): return False
+                if set(vals) != set([1,2,3,4,5,6,7,8,9]): return False
             return True
         return False
 
