@@ -104,7 +104,7 @@ class Sudoku(object):
         self.initialize_peers()
         self.initialize_get_containing_methods()
         self._solve1_visited = []
-        self.solved = []
+        self.solved = set()
 
         try:
             if infile:
@@ -131,12 +131,12 @@ class Sudoku(object):
         # iterate solve1(), solve2() and solve3() until stuck.
         solvers = [self.solve1, self.solve2, self.solve3]
         # for finetuning:
-        # solvers = [self.solve1]*1 + [self.solve2]*1 + [self.solve3]*1
+        #solvers = [self.solve1]*1 + [self.solve2]*1 + [self.solve3]*1
         if self.repeat_until_stuck(solvers): 
             return True
         else:
             # if the solvers don't solve the puzzle
-            if self._is_consistent(): # and seems consistent
+            if self._is_consistent(): # and seems consistent #TODO fix this
                 return self.bt() # do some backtracking
             else:
                 return False
@@ -145,15 +145,19 @@ class Sudoku(object):
         """ backtracking function if other techniques
         fail """
         table_copy = self.table.copy()
-        mincell_coord, mincell, _ = min([(coord, cell, len(cell)) 
-            for coord, cell in table_copy.iteritems() if len(cell)>1], key=lambda x: x[2])
+        try:
+            mincell_coord, mincell, _ = min([(coord, cell, len(cell)) 
+                for coord, cell in table_copy.iteritems() if len(cell)>1], key=lambda x: x[2])
+        except ValueError: # everything is filled
+            #print "that's strange..." #TODO delete
+            return self.is_consistent()
         mincell_copy = mincell.copy()
         mincell.clear()
         for cand in mincell_copy:
             mincell.add(cand)
             #print mincell_copy, cand
             #print table_copy
-            child = SudokuChild(table_copy, self.solved+[mincell_coord], self._solve1_visited)
+            child = SudokuChild(table_copy, self.solved|set([mincell_coord]), self._solve1_visited)
             if child.solve():
                 self.table = child.table
                 return True
@@ -176,10 +180,10 @@ class Sudoku(object):
             for (col2, row2) in self.peers(col,row):
                 if not self.elim_cand(col2,row2,value): #contradiction found
                     return False
-                if len(self.get_clist(col2,row2))==1 and \
-                (col2,row2) not in self._solve1_visited:
+                if (col2, row2) in self.solved and \
+                (col2,row2) not in self._solve1_visited and \
+                (col2, row2) not in todo:
                     todo.append((col2,row2))
-                    #self._solve1_visited.append((col,row))
         return True
 
     def solve2(self):
@@ -189,23 +193,22 @@ class Sudoku(object):
         solve 1"""
         for region in self.regions:
             for no in xrange(1,10):
-                possible = []
                 target_col, target_row = None, None
-                for row,col in region:
-                    if no in self.get_clist(row, col):
-                        if len(possible)==1:
+                found_no = False
+                for col,row in region:
+                    if no in self.get_clist(col, row):
+                        if found_no==True:
                             break
-                        else:
-                            possible.append(self.table[row,col])
-                            target_col, target_row = row,col
+                        target_col, target_row = col,row
+                        found_no=True
                 else:
-                    if len(possible)!=1: continue
-                    self.assign(target_col, target_row, no)
-                    #cell = possible[0]
-                    #if cell: #we don't want to "repair" inconsistent puzzles
-                    #    cell.clear()
-                    #    cell.add(no)
-                    #    self.solved.append((target_col, target_row))
+                    if found_no==False:
+                        # inconsistency deteced, no doesn't
+                        # fit anywhere in the region
+                        return False
+                    if not self.assign(target_col, target_row, no):
+                        # cell was empty
+                        return False
         return True
 
     def solve3(self): 
@@ -267,8 +270,7 @@ class Sudoku(object):
         if not cell: return False
         cell.clear()
         cell.add(value)
-        if (col, row) not in self.solved: #TODO make self.solved a set?
-            self.solved.append((col,row))
+        self.solved.add((col,row))
         return True
 
     def elim_cand(self, col, row, value):
@@ -280,7 +282,7 @@ class Sudoku(object):
         cell.discard(value)
         if not cell: return False
         if len(cell) == 1 and (col,row) not in self.solved:
-            self.solved.append((col,row))
+            self.solved.add((col,row))
         return True
 
     def cand_no(self):
@@ -362,17 +364,18 @@ class Sudoku(object):
             for func in tasks:
                 if not func():
                     return False
+                if not self.is_consistent(): 
+                    return False
                 if self.is_solved():
                     return True
-                #if not self._is_consistent(): 
-                #    return False
             table_actual_hash = self.get_table_hash()
         return False
 
     def is_solved(self):
         """ return True if the puzzle is solved,
         False otherwise """
-        return all(len(cand_lst)==1 for cand_lst in self.table.itervalues())
+        return len(self.solved) == 81
+        #return all(len(cand_lst)==1 for cand_lst in self.table.itervalues())
                                     
     def _is_consistent(self):
         """ Detects collisions. Technically this internal function just returns
@@ -383,10 +386,12 @@ class Sudoku(object):
     def is_consistent(self):
         """ Detects collisions. This is the function that should be called by
         outside agents and test suites to test if an already solved puzzle is consistent. """
-        numbers = "123456789"
-        if self._is_consistent: # basic check. If there are empty cells, we can't use sorted().
-            return all("".join(map(str, sorted([self.get_cell(row,col) for row, col in region])))==numbers 
-                for region in self.regions)
+        if self._is_consistent(): # basic check. If there are empty cells, we can't use sorted().
+            for region in self.regions:
+                vals = filter(lambda x: x, [self.get_cell(row,col) for row, col in region])
+                if len(vals) != len(set(vals)): return False
+            return True
+        return False
 
     # low-level internal processing methods
 
@@ -438,7 +443,7 @@ class Sudoku(object):
             for col in xrange(9):
                 self.table[(row,col)] = set(self.char_to_cand_list(instr[row*9+col]))
                 if len(self.table[(row,col)])==1:
-                    self.solved.append((row,col))
+                    self.solved.add((row,col))
         self.check_table()
 
     def check_table(self):
@@ -494,7 +499,7 @@ class SudokuChild(Sudoku):
     def __init__(self, table, solved, solve1_visited): #TODO just give mother as parameter?
         self.table=self.copy_table(table) #TODO should I use super()?
         self._solve1_visited = solve1_visited[:]
-        self.solved = solved[:]
+        self.solved = solved.copy()
 
 if __name__ == "__main__":
     with open(sys.argv[1]) as infile:
@@ -502,5 +507,6 @@ if __name__ == "__main__":
     print sudoku
     if sudoku.solve():
         print sudoku
+        print sudoku.is_consistent()
     else:
         print "This puzzle is invalid."

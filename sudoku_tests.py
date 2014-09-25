@@ -174,8 +174,10 @@ def test_sudoku_class(): #rebuild this function
             elapsed = after-before
             average = elapsed/puzzleno
             print "Solving {!s} puzzles took {!s} secs, avg: {!s} sec".format(puzzleno, elapsed, average) #TODO check results
-            for puzzle in collection:
-                assert puzzle.is_consistent()
+            for i, puzzle in enumerate(collection):
+                if not puzzle.is_consistent():
+                    print "problem with puzzle number {!s}".format(i+1)
+                    assert False
     print "Tests succesful!"
     return True
 
