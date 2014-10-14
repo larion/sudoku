@@ -1,15 +1,19 @@
-#! /usr/bin/python
+#! /usr/bin/env python
 
-#  A sudoku solver
-#  Larion Garaczi 2014
+""" 
+A sudoku solver.
+  
+Author: Larion Garaczi 
+Date: 2014
+"""
+
 #
 # TODO
 #
 # - document new behaviour of solve3
 # - delete solve2?
-# - don't check everything in solve3 only what is needed (keep
+# - don't check everything in solve3, only what is needed (keep
 # track of modified cells?)
-# - combine is_consistent functions into one function
 # - make sudokuboard a class, it needs to be encapsulated
 # - handle inconsistencies via exceptions not through return
 # values
@@ -46,12 +50,6 @@ class SudokuError(Exception):
 class SudokuInputError(SudokuError):
     pass
 
-def p(string):
-    print "DEBUG: {!s}".format(string)
-
-def d():
-    import pdb; pdb.set_trace()
-
 class SudokuCollection(object): #TODO add __len__
     """ Class that can store a collection of sudoku puzzles."""
     def __init__(self, sudokufile):
@@ -64,7 +62,8 @@ class SudokuCollection(object): #TODO add __len__
 
     def solve_all(self, outfile=None, verbose=True):
         """ solves all sudokus in the collection, and (optionally) writes out 
-        the solutions to the file specified """
+        the solutions to the file specified
+        """
         v = verbose
         total = len(self) #total number of sudokus in the collection
         if v: print "Solving {!s} sudokus.".format(total)
@@ -93,8 +92,8 @@ class SudokuCollection(object): #TODO add __len__
 class Sudoku(object):
     """ Class that represents Sudoku puzzles. The only public method is sudoku.solve(). 
     This combines simple elimination techniques (see Sudoku.solve1, Sudoku.solve2 andSudoku.solve3)
-    with backtracking (which is only used when simple methods fail)."""
-
+    with backtracking (which is only used when simple methods fail).
+    """
     def __init__(self, infile=None, instr=None, inlist=None, indict=None): 
         """ Read in puzzle from a file, a string or a list parameter.
         You should define only one kind of input, otherwise the result
@@ -128,12 +127,13 @@ class Sudoku(object):
             raise SudokuInputError
 
 
-    # high-level solving functions
+    ### high-level solving functions ###
 
     def solve(self):
         """ The main function of this class. Tries to solve the
         puzzle. It returns False if the puzzle is inconsistent
-        and True otherwise.""" 
+        and True otherwise.
+        """ 
         # iterate solve1(), solve2() and solve3() until stuck.
         solvers = [self.solve1, self.solve3]
         # for finetuning:
@@ -142,20 +142,18 @@ class Sudoku(object):
             return True
         else:
             # if the solvers don't solve the puzzle
-            if self._is_consistent(): # and seems consistent #TODO fix this
+            if self.is_valid(): # and seems consistent #TODO fix this
                 return self.bt() # do some backtracking
             else:
                 return False
 
     def bt(self):
-        """ backtracking function if other techniques
-        fail """
+        """ Backtracking function (in case other techniques fail). """
         table_copy = self.table.copy()
         try:
             mincell_coord, mincell, _ = min([(coord, cell, len(cell)) 
                 for coord, cell in table_copy.iteritems() if len(cell)>1], key=lambda x: x[2])
         except ValueError: # everything is filled
-            #print "that's strange..." #TODO delete
             return self.is_consistent()
         mincell_copy = mincell.copy()
         mincell.clear()
@@ -174,7 +172,8 @@ class Sudoku(object):
     def solve1(self): 
         """ For all regions check if there is only one cell left in
         it. If so, fill in the last cell accordingly. Do this until
-        stuck. """
+        stuck. 
+        """
         todo = [(col,row) for col,row in self.solved if (col,row) not in self._solve1_visited]
         while todo:
             col, row = todo.pop()
@@ -196,7 +195,8 @@ class Sudoku(object):
         """For all regions and numbers not yet filled in, check if
         there is only one possible cell to insert the number into.
         If so, insert it. This only makes sense in conjunction with
-        solve 1"""
+        solve 1
+        """
         for region in self.regions:
             for no in xrange(1,10):
                 target_col, target_row = None, None
@@ -261,7 +261,7 @@ class Sudoku(object):
                                 return False
         return True
 
-    #middle level helper methods
+    ### middle level helper methods ###
 
     def get_cell(self, col, row):
         """ Returns the value of a cell that has already been filled in.
@@ -304,7 +304,8 @@ class Sudoku(object):
     def cand_no(self):
         """ return the total number of candidates in all cells.
         This function is useful for comparing different solving
-        functions. """
+        functions. 
+        """
         return len([(col, row, cand) for col in range(9) for row in range(9) for cand in self.get_clist(col,row)])
 
     @classmethod
@@ -332,7 +333,8 @@ class Sudoku(object):
     @classmethod
     def initialize_peers(cls): 
         """ Initialize a list of peers for each cell in self.peers, so that we
-        don't have to generate this list every time. """
+        don't have to generate this list every time.
+        """
         if hasattr(cls, "peersdict"):
             return
         cls.peersdict={}
@@ -365,7 +367,8 @@ class Sudoku(object):
     def repeat_until_stuck(self, function): 
         """ Iterates a solving function until it gets stuck (i. e. self.table
         doesn't get changed anymore) or the puzzle is solved. If called with a
-        list of function it iterates through all of them until stuck. """
+        list of function it iterates through all of them until stuck. 
+        """
         if not isinstance(function, list):
             tasks = [function]
         else:
@@ -380,47 +383,49 @@ class Sudoku(object):
             for func in tasks:
                 if not func():
                     return False
-                if self.is_solved():
+                if self.is_filled():
                     #if not self.is_consistent(): #make up your mind about this 
                     #    return False
                     return True
             table_actual_hash = self.get_table_hash()
         return False
 
-    def is_solved(self):
-        """ return True if the puzzle is solved,
-        False otherwise """
-        return len(self.solved) == 81
-        #return all(len(cand_lst)==1 for cand_lst in self.table.itervalues())
-                                    
-    def _is_consistent(self):
-        """ Detects collisions. Technically this internal function just returns
-        False if there is a cell in self.table which is empty (no candidates
-        left). It does NOT check if there are undetected collisions. """
+    def is_valid(self):
+        """ Detects collisions. Technically this function just returns False if
+        there is a cell in self.table which is empty (no candidates left). It
+        does NOT check if there are undetected collisions.
+        """
         return all(cand_lst for cand_lst in self.table.itervalues())
 
     def is_consistent(self):
         """ Detects collisions. This is the function that should be called by
-        outside agents and test suites to test if an already solved puzzle is consistent. """
-        if self._is_consistent(): # basic check. If there are empty cells, we can't use sorted().
+        outside agents and test suites to test if an already solved puzzle is consistent.
+        """
+        if self.is_valid(): # basic check. If there are empty cells, we can't use sorted().
             for region in self.regions:
-                vals = filter(lambda x: x, [self.get_cell(row,col) for row, col in region])
+                vals = [self.get_cell(row,col) for row, col in region]
                 if len(vals) != len(set(vals)): return False
             return True
         return False
 
-    def is_consistent_tmp(self): #TODO do sth about these functions
-        """ Detects collisions. This is the function that should be called by
-        outside agents and test suites to test if an already solved puzzle is consistent. """
-        if self._is_consistent(): # basic check. If there are empty cells, we can't use sorted().
+    def is_filled(self):
+        """ Returns True if all fields are filled in, False otherwise """
+        return len(self.solved) == 81
+        #return all(len(cand_lst)==1 for cand_lst in self.table.itervalues())
+                                    
+    def is_solved(self): 
+        """ Returns True if a puzzle is solved (all fields are filled in and there are
+        no collisions), False otherwise.
+        """
+        if self.is_valid(): # basic check. If there are empty cells, we can't use sorted().
             for region in self.regions:
-                vals = filter(lambda x: x, [self.get_cell(row,col) for row, col in region])
+                vals = [self.get_cell(row,col) for row, col in region]
                 if len(vals) != len(set(vals)): return False
                 if set(vals) != set([1,2,3,4,5,6,7,8,9]): return False
             return True
         return False
 
-    # low-level internal processing methods
+    ### low-level internal processing methods ###
 
     def get_table_hash(self):
         table_tuple = frozenset([(key, tuple(value)) for key, value in self.table.items()])
@@ -476,7 +481,8 @@ class Sudoku(object):
     def check_table(self):
         """ Check self.table for possible corruptions. This is just a
         low-level internal check to filter out corrupt input. It doesn't
-        detect inconsistencies (i. e. collisions within regions). """
+        detect inconsistencies (i. e. collisions within regions). 
+        """
         numbers = range(1, 10)
         # there should be 9 columns:
         if len(set([a for (a,b) in self.table.keys()])) != 9: 
@@ -493,12 +499,12 @@ class Sudoku(object):
         #and no numbers besides 1,2,...,9:
         candidates = set(no for col in xrange(9) for row in xrange(9) for no in self.table[col,row])
         if not candidates.issubset(numbers):
-            p(candidates)
             raise SudokuInputError("Invalid input. Grid geometry corrupt.") #TODO more informative message here
 
     def __str__(self):
         """ Pretty printer. This loses information, so that it can be easily 
-        readable by humans: it only prints out unambiguous cells. """
+        read by humans: it only prints out unambiguous cells. 
+        """
         out = ""
         for col in range(9):
             if col%3 == 0: 
@@ -519,7 +525,8 @@ class Sudoku(object):
         """ The output of this function is the format that the class
         can read in as well (serialization) - a list of possibilities
         for all cells of the 9*9 grid. This doesn't lose any 
-        information. """
+        information. 
+        """
         return repr(self.table)
 
 class SudokuChild(Sudoku):
@@ -534,6 +541,5 @@ if __name__ == "__main__":
     print sudoku
     if sudoku.solve():
         print sudoku
-        print sudoku.is_consistent()
     else:
         print "This puzzle is invalid."

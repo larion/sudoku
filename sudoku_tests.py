@@ -1,4 +1,11 @@
-#! /usr/bin/python
+#! /usr/bin/env python
+
+""" 
+Test suite for the Sudoku solver. 
+
+Author: Larion Garaczi
+Date: 2014
+"""
 
 from sudoku import Sudoku, SudokuCollection, SudokuError, SudokuInputError
 import time
@@ -175,7 +182,7 @@ def test_sudoku_class(): #rebuild this function
             average = elapsed/puzzleno
             print "Solving {!s} puzzles took {!s} secs, avg: {!s} sec".format(puzzleno, elapsed, average) #TODO check results
             for i, puzzle in enumerate(collection):
-                if not puzzle.is_consistent_tmp():
+                if not puzzle.is_solved():
                     print "problem with puzzle number {!s}".format(i+1)
                     assert False
     print "Tests succesful!"
